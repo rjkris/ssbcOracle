@@ -1,0 +1,10 @@
+[chains]
+    [chains.ssbc1]
+    id = "0"
+    name = "ssbc1"
+    clientPort = "8009"
+
+    [chains.ssbc2]
+    id = "0"
+    name = "ssbc2"
+    clientPort = "8011"
