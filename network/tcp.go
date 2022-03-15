@@ -2,9 +2,10 @@ package network
 
 import (
 	"encoding/json"
-	"io/ioutil"
-	"net"
 	"github.com/cloudflare/cfssl/log"
+	"net"
+	"ssbcOracle/meta"
+	"ssbcOracle/util"
 )
 
 type TcpMessage struct {
@@ -12,35 +13,6 @@ type TcpMessage struct {
 	Data []byte
 	From string
 	To string
-}
-
-func handleRequest(conn net.Conn)  {
-	b, err := ioutil.ReadAll(conn)
-	if err != nil {
-		log.Errorf("connection read error: %s", err)
-	}
-	tmsg := TcpMessage{}
-	err = json.Unmarshal(b, &tmsg)
-	if err != nil {
-		log.Errorf("tcpMessage unmarshal error: %s", err)
-	}
-	log.Infof("message: %+v", tmsg)
-}
-
-func TcpListen(addr string)  {
-	listen, err := net.Listen("tcp", addr)
-	if err != nil {
-		log.Error(err)
-	}
-	log.Infof("开启tcp监听：%s", addr)
-	for {
-		conn, err := listen.Accept()
-		log.Infof("新建tcp连接,remote: %s, local: %s", conn.RemoteAddr(), conn.LocalAddr())
-		if err != nil {
-			log.Error(err)
-		}
-		go handleRequest(conn)
-	}
 }
 
 func TcpSend(addr string, msg TcpMessage)  {
@@ -55,5 +27,20 @@ func TcpSend(addr string, msg TcpMessage)  {
 	if err != nil {
 		log.Error(err)
 	}
+	log.Infof("tcp消息发送成功：%+v", msg)
 }
 
+func BroadcastMsg(t string, data []byte, self *meta.OracleNode)  {
+	for name, node := range util.NodeConfs {
+		if name == self.Name {
+			continue
+		}
+		reqMsg := TcpMessage{
+			Type: t,
+			Data: data,
+			From: self.Name,
+			To:   node.Name,
+		}
+		TcpSend(node.Addr, reqMsg)
+	}
+}

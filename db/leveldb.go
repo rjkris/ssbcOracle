@@ -5,18 +5,21 @@ import (
 	"github.com/syndtr/goleveldb/leveldb"
 )
 
-var db *leveldb.DB
-var err error
-
-func InitDB(path string) {
-	db, err = leveldb.OpenFile("db/leveldb/"+path, nil)
-	if err != nil {
-		log.Error("db init err:", err)
-	}
+type KvDb struct {
+	Ldb *leveldb.DB
 }
 
-func DBGet(key string) []byte {
-	data, err := db.Get([]byte(key), nil)
+func InitDB(path string) (*KvDb, error){
+	db, err := leveldb.OpenFile("./db/leveldb/"+path, nil)
+	if err != nil {
+		log.Error("db init err:", err)
+		return nil, err
+	}
+	return &KvDb{Ldb: db}, nil
+}
+
+func (kvdb *KvDb)DBGet(key string) []byte {
+	data, err := kvdb.Ldb.Get([]byte(key), nil)
 	if err != nil {
 		log.Error("db get err:", err)
 		return nil
@@ -24,15 +27,17 @@ func DBGet(key string) []byte {
 	return data
 }
 
-func DBPut(key string, value []byte) {
-	err = db.Put([]byte(key), value, nil)
+func (kvdb *KvDb)DBPut(key string, value []byte) error{
+	err := kvdb.Ldb.Put([]byte(key), value, nil)
 	if err != nil {
 		log.Error("db put err:", err)
+		return err
 	}
+	return nil
 }
 
-func DBDelete(key string) {
-	err = db.Delete([]byte(key), nil)
+func (kvdb *KvDb)DBDelete(key string) {
+	err := kvdb.Ldb.Delete([]byte(key), nil)
 	if err != nil {
 		log.Error("db delete err", err)
 	}

@@ -11,7 +11,7 @@ type Config struct {
 	Chains map[string]meta.ChainSource
 }
 
-func TestToml(t *testing.T)  {
+func TestToml(t *testing.T) {
 	var config Config
 	_, err := toml.DecodeFile("config.toml", &config)
 	if err != nil {

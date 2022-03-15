@@ -2,23 +2,19 @@ package chain
 
 import (
 	"fmt"
-	"ssbcOracle/db"
 	"testing"
 )
 
-func TestListenEventHandler(t *testing.T) {
-	db.InitRedis("127.0.0.1:6379")
-	ListenEventHandler()
-}
+//func TestListenEventHandler(t *testing.T) {
+//	db.InitRedis("127.0.0.1:6379")
+//	ListenEventHandler()
+//}
+//
+//func TestEventHandler(t *testing.T) {
+//	db.InitRedis("127.0.0.1:6379")
+//	EventHandler()
+//}
 
-func TestEventHandler(t *testing.T) {
-	db.InitRedis("127.0.0.1:6379")
-	EventHandler()
-}
-
-func TestAccountRegister(t *testing.T) {
-	AccountRegister()
-}
 func TestGolang(t *testing.T)  {
 	var params map[string]string
 	fmt.Println(len(params))

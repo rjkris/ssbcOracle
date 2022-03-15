@@ -8,3 +8,19 @@
     id = "0"
     name = "ssbc2"
     clientPort = "8011"
+
+[nodes]
+    [nodes.n0]
+    name = "n0"
+    index = 0
+    addr = "127.0.0.1:9000"
+
+    [nodes.n1]
+    name = "n1"
+    index = 1
+    addr = "127.0.0.1:9001"
+
+    [nodes.n2]
+    name = "n2"
+    index = 2
+    addr = "127.0.0.1:9002"

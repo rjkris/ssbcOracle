@@ -1,5 +1,17 @@
 package meta
 
+import (
+	"crypto/ecdsa"
+	"github.com/xuperchain/crypto/common/math/ecc"
+	"math/big"
+	"net"
+	"ssbcOracle/db"
+)
+
+type TcpClient interface {
+	HandleRequest(conn net.Conn)
+}
+
 type Event struct {
 	Type string
 	EventID     string
@@ -49,10 +61,10 @@ type ChainSource struct {
 	Id string
 	Name string
 	ClientPort string
-	ConsensusNode []Node
+	ConsensusNode []CsNode
 }
 
-type Node struct {
+type CsNode struct {
 	Id string
 	PublicKey []byte
 	Ip string
@@ -75,4 +87,20 @@ type ChainAccount struct {
 type Query struct {
 	Type       string   `json:"type"`
 	Parameters []string `json:"parameters"`
+}
+
+type OracleNode struct {
+	Name string
+	Index int
+	Addr string
+	DkgStatus       bool // 分布式密钥生成状态
+	TotalNum        int // 节点总数
+	MinNum          int // 签名阈值
+	LocalShares     []*big.Int // 本地私钥碎片
+	VerifyPoints    []*ecc.Point
+	SharesNum       int
+	PointsNum       int
+	LocalPrivateKey *ecdsa.PrivateKey // 本地私钥
+	PublicKey       *ecdsa.PublicKey  // 统一公钥
+	DB              *db.KvDb
 }

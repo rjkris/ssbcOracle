@@ -2,44 +2,45 @@ package chain
 
 import (
 	"encoding/json"
-	"fmt"
-	"github.com/BurntSushi/toml"
 	"github.com/cloudflare/cfssl/log"
 	"ssbcOracle/db"
 	"ssbcOracle/meta"
 	"ssbcOracle/network"
+	"ssbcOracle/trust"
+	"ssbcOracle/util"
+	"time"
 )
 
-type Config struct {
-	Chains map[string]meta.ChainSource
+var Accounts map[string]meta.ChainAccount // 区块链上注册的预言机账户
+
+
+type ChainClient struct {
+	oNode *meta.OracleNode
+	db *db.KvDb
 }
 
 
-var TomlConfig Config
-var chains map[string]meta.ChainSource
-var accounts map[string]meta.ChainAccount // 区块链上注册的预言机账户
-
-func init() {
-	_, err := toml.DecodeFile("./config.toml", &TomlConfig)
-	if err != nil {
-		fmt.Printf("配置文件读取失败：%s\n", err)
-	}
-	chains = TomlConfig.Chains
-
-	db.InitDB("n0")
-	acBytes := db.DBGet(meta.AccountKey)
-	_ = json.Unmarshal(acBytes, &accounts)
-	AccountRegister()
-}
-
-
-func ListenEventHandler() {
+func (c *ChainClient)ListenEventHandler(stc *trust.SchnorrTssClient) {
+	log.Infof("主节点开始监听redis事件队列")
 	for {
-		EventHandler()
+		if stc.ONode.DkgStatus { // 等待dkg完成
+			break
+		}
+	}
+	time.Sleep(time.Duration(1)*time.Second) // sleep3秒确保密钥生成完成
+	for {
+		if stc.TssStatus == true { // 正在进行数据共识，等待
+			continue
+		}
+		c.EventHandler(stc)
 	}
 }
 
-func EventHandler() error {
+func NewChainClient(node *meta.OracleNode, db *db.KvDb) *ChainClient {
+	return &ChainClient{oNode: node, db: db}
+}
+
+func (c *ChainClient)EventHandler(stc *trust.SchnorrTssClient) error {
 	var event meta.Event
 	data, err := db.RedisCli.LPop(meta.RedisEventKey).Result()
 	if err != nil { // 队列没有数据
@@ -53,7 +54,6 @@ func EventHandler() error {
 		log.Errorf("event unmarshal error: %s", err)
 		return err
 	}
-	args := make(map[string]string)
 	// 0:日志记录;1:api;2:跨链;3:事件外传
 	switch event.Type {
 	case "1": // 预言机从外部api获取数据
@@ -67,56 +67,28 @@ func EventHandler() error {
 		//	}
 		//}
 		//log.Info(string(res))
-		args["data"] = "hello world"
+		return nil
 	case "2":
-		chainName := event.Args["name"] // 目标链名
-		targetPort := TomlConfig.Chains[chainName].ClientPort
-		url := "http://localhost:"+targetPort+"/query"
-		chainParams := meta.Query{
-			Type:       event.Args["dataType"],
-			Parameters: []string{event.Args["params"]},
-		}
-		chainParamsBytes, _ := json.Marshal(chainParams)
-		var res network.HttpResponse
-		resBytes, err := network.PostMsg(url, chainParamsBytes)
-		if err != nil {
-			log.Errorf("跨链数据请求失败：%s", err)
-			return err
-		}
-		_ = json.Unmarshal(resBytes, &res)
-		log.Infof("跨链数据请求成功：%+v", res)
-		dataBytes, _ := json.Marshal(res.Data)
-		args["data"] = string(dataBytes)
+		// 主节点拉取数据
+		dataBytes, _ := GetDataFromChain(event)
+		stc.TssStatus = true
+		// 广播事件
+		stc.Event = event
+		network.BroadcastMsg("ReceiveEvent", []byte(data), c.oNode)
+		stc.Msg = dataBytes
+		// 广播数据，开始对数据签名共识，主节点对签名聚合后发起事件消息
+		network.BroadcastMsg("ReceiveMsg", dataBytes, c.oNode)
 	}
-	argsBytes, _ := json.Marshal(args)
-	params := meta.EventMessageParams{
-		From:      "",
-		EventKey:  event.EventID,
-		PublicKey: "",
-		Args:      string(argsBytes),
-	}
-	paramsBytes, _ := json.Marshal(params)
-	resp, err := network.PostMsg("http://localhost:" + chains[event.ChainId].ClientPort + "/postEvent", paramsBytes)
-	if err != nil {
-		log.Errorf("发起事件消息失败：%s", err)
-		return err
-	}
-	log.Infof("发起事件消息成功：%s", resp)
 	return nil
 }
 
-// 注册链的基本信息
-func ChainRegister()  {
-	
-}
-
 // 注册预言机账户 
-func AccountRegister() error {
-	for id, info := range chains {
-		if len(accounts) == 0 {
-			accounts = make(map[string]meta.ChainAccount)
+func AccountRegister(db *db.KvDb) ([]byte, error) {
+	for id, info := range util.ChainConfs {
+		if len(Accounts) == 0 {
+			Accounts = make(map[string]meta.ChainAccount)
 		}
-		_, ok := accounts[id]
+		_, ok := Accounts[id]
 		if !ok {
 			resBytes, err := network.GetMsg("http://localhost:"+info.ClientPort+"/registerAccount")
 			if err != nil {
@@ -125,19 +97,56 @@ func AccountRegister() error {
 			}
 			var res network.HttpResponse
 			_ = json.Unmarshal(resBytes, &res)
-			data, _ := (res.Data).(meta.ChainAccount)
+			var data meta.ChainAccount
+			dataBytes, _ := json.Marshal(res.Data)
+			_ = json.Unmarshal(dataBytes, &data)
 			log.Infof("%s预言机账户注册成功：%+v", info.Name, data)
-			accounts[id] = meta.ChainAccount{
-				AccountAddress: data.AccountAddress ,
-				PublicKey: data.PublicKey,
-				PrivateKey: data.PrivateKey,
-			}
+			Accounts[id] = data
 		}
 	}
-	accountsBytes, _ := json.Marshal(accounts)
+	accountsBytes, _ := json.Marshal(Accounts)
 	db.DBPut(meta.AccountKey, accountsBytes)
+	log.Infof("账户数据存入本地：%+v", Accounts)
+	return accountsBytes, nil
+}
+
+func GetDataFromChain(event meta.Event) ([]byte, error) {
+	chainName := event.Args["name"] // 目标链名
+	targetPort := util.ChainConfs[chainName].ClientPort
+	url := "http://localhost:"+targetPort+"/query"
+	chainParams := meta.Query{
+		Type:       event.Args["dataType"],
+		Parameters: []string{event.Args["params"]},
+	}
+	chainParamsBytes, _ := json.Marshal(chainParams)
+	var res network.HttpResponse
+	resBytes, err := network.PostMsg(url, chainParamsBytes)
+	if err != nil {
+		log.Errorf("跨链数据请求失败：%s", err)
+		return nil, err
+	}
+	_ = json.Unmarshal(resBytes, &res)
+	log.Infof("跨链数据请求成功：%+v", res)
+	dataBytes, _ := json.Marshal(res.Data)
+	return dataBytes, nil
+}
+
+func (c *ChainClient)Account(msg network.TcpMessage) error {
+	if c.oNode.Name == "n0" { // 主节点注册账户
+		accountBytes, _ := AccountRegister(c.db)
+		network.BroadcastMsg("account", accountBytes, c.oNode)
+	}else { // 其他节点直接存储下来
+		err := c.db.DBPut(meta.AccountKey, msg.Data)
+		if err != nil {
+			log.Infof("账户数据存储失败")
+			return err
+		}
+		_ = json.Unmarshal(msg.Data, &Accounts)
+		log.Infof("账户数据存储成功:%+v", Accounts)
+	}
 	return nil
 }
+
 
 
 
