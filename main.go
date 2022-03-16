@@ -26,9 +26,7 @@ func main() {
 	//	db.InitRedis("127.0.0.1:6379")
 	//	chain.ListenEventHandler()
 	case "dkg": // 节点开始dkg
-		name := os.Args[2]
-		addr := util.NodeConfs[name].Addr
-		dkgClient(addr)
+		dkgClient()
 	case "sign": // 签名测试
 		name := os.Args[2]
 		addr := util.NodeConfs[name].Addr
@@ -58,14 +56,16 @@ func main() {
 	}
 }
 
-func dkgClient(addr string) {
+func dkgClient() {
 	msg := network.TcpMessage{
 		Type: "TssDkg",
 		Data: nil,
 		From: "",
 		To:   "",
 	}
-	network.TcpSend(addr, msg)
+	for _, node := range util.NodeConfs {
+		network.TcpSend(node.Addr, msg)
+	}
 }
 
 // 发送给主节点开始签名流程
