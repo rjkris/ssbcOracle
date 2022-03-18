@@ -84,7 +84,7 @@ func (c *ChainClient)EventHandler(stc *trust.SchnorrTssClient) error {
 	return nil
 }
 
-// 注册预言机账户 
+// 注册预言机账户
 func AccountRegister(db *db.KvDb) ([]byte, error) {
 	for id, info := range util.ChainConfs {
 		if len(Accounts) == 0 {
@@ -129,7 +129,7 @@ func GetDataFromChain(event meta.Event) ([]byte, error) {
 	}
 	_ = json.Unmarshal(resBytes, &res)
 	log.Infof("跨链数据请求成功：%+v", res)
-	dataBytes, _ := json.Marshal(res.Data)
+	dataBytes := []byte(res.Data.(string))
 	return dataBytes, nil
 }
 
