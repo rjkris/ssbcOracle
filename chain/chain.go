@@ -8,6 +8,7 @@ import (
 	"ssbcOracle/network"
 	"ssbcOracle/trust"
 	"ssbcOracle/util"
+	"strings"
 	"time"
 )
 
@@ -118,7 +119,7 @@ func GetDataFromChain(event meta.Event) ([]byte, error) {
 	url := "http://localhost:"+targetPort+"/query"
 	chainParams := meta.Query{
 		Type:       event.Args["dataType"],
-		Parameters: []string{event.Args["params"]},
+		Parameters: strings.Split(event.Args["params"], ","),
 	}
 	chainParamsBytes, _ := json.Marshal(chainParams)
 	var res network.HttpResponse
@@ -129,7 +130,7 @@ func GetDataFromChain(event meta.Event) ([]byte, error) {
 	}
 	_ = json.Unmarshal(resBytes, &res)
 	log.Infof("跨链数据请求成功：%+v", res)
-	dataBytes := []byte(res.Data.(string))
+	dataBytes, _ := json.Marshal(res.Data)
 	return dataBytes, nil
 }
 
