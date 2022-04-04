@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"github.com/cloudflare/cfssl/log"
 	"net"
-	"ssbcOracle/meta"
 	"ssbcOracle/util"
 )
 
@@ -30,15 +29,15 @@ func TcpSend(addr string, msg TcpMessage)  {
 	log.Infof("tcp消息发送成功：%+v", msg)
 }
 
-func BroadcastMsg(t string, data []byte, self *meta.OracleNode)  {
+func BroadcastMsg(t string, data []byte, selfName string)  {
 	for name, node := range util.NodeConfs {
-		if name == self.Name {
+		if name == selfName {
 			continue
 		}
 		reqMsg := TcpMessage{
 			Type: t,
 			Data: data,
-			From: self.Name,
+			From: selfName,
 			To:   node.Name,
 		}
 		TcpSend(node.Addr, reqMsg)

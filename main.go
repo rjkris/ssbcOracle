@@ -12,10 +12,15 @@ import (
 	"ssbcOracle/network"
 	"ssbcOracle/trust"
 	"ssbcOracle/util"
+	"time"
 )
 
 func main() {
 
+	meta.Report.LocalCreditArrays = make(map[int]float64)
+	meta.Report.SignTimeArrays = make(map[int]time.Duration)
+	meta.Report.SignIndexArrays = []int{1, 2}
+	meta.Report.LocalCreditArrays = map[int]float64{0:0.5, 1:0.5, 2:0.5}
 	if len(os.Args) < 2 {
 		return
 	}
@@ -137,4 +142,8 @@ func HandleRequest(c *chain.ChainClient, stc *trust.SchnorrTssClient, conn net.C
 	case "account":
 		c.Account(tmsg) // 注册账户
 	}
+}
+
+func performanceTest()  {
+
 }

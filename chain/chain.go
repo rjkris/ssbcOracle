@@ -70,14 +70,15 @@ func (c *ChainClient)EventHandler(stc *trust.SchnorrTssClient) error {
 		return nil
 	case "2": // 预言机从链上pull数据
 		// 主节点拉取数据
+		meta.Report.StartConsensusTime = time.Now()
 		dataBytes, _ := GetDataFromChain(event)
 		stc.TssStatus = true
 		// 广播事件
 		stc.Event = event
-		network.BroadcastMsg("ReceiveEvent", []byte(data), c.oNode)
+		network.BroadcastMsg("ReceiveEvent", []byte(data), c.oNode.Name)
 		stc.Msg = dataBytes
 		// 广播数据，开始对数据签名共识，主节点对签名聚合后发起事件消息
-		network.BroadcastMsg("ReceiveMsg", dataBytes, c.oNode)
+		network.BroadcastMsg("ReceiveMsg", dataBytes, c.oNode.Name)
 	case "3": // 预言机向链上push数据, 目前不进行共识
 		NewTransaction(event)
 	}
@@ -113,6 +114,7 @@ func AccountRegister(db *db.KvDb) ([]byte, error) {
 }
 
 func GetDataFromChain(event meta.Event) ([]byte, error) {
+	t := time.Now()
 	chainName := event.Args["name"] // 目标链名
 	targetPort := util.ChainConfs[chainName].ClientPort
 	url := "http://localhost:"+targetPort+"/query"
@@ -130,6 +132,8 @@ func GetDataFromChain(event meta.Event) ([]byte, error) {
 	_ = json.Unmarshal(resBytes, &res)
 	log.Infof("跨链数据请求成功：%+v", res)
 	dataBytes, _ := json.Marshal(res.Data)
+	log.Infof("共识节点请求数据时间 ：%s", time.Since(t))
+	meta.Report.DataRequestTime = time.Since(t)
 	return dataBytes, nil
 }
 
@@ -172,7 +176,7 @@ func NewTransaction(event meta.Event) error{
 func (c *ChainClient)Account(msg network.TcpMessage) error {
 	if c.oNode.Name == "n0" { // 主节点注册账户
 		accountBytes, _ := AccountRegister(c.db)
-		network.BroadcastMsg("account", accountBytes, c.oNode)
+		network.BroadcastMsg("account", accountBytes, c.oNode.Name)
 	}else { // 其他节点直接存储下来
 		err := c.db.DBPut(meta.AccountKey, msg.Data)
 		if err != nil {
@@ -182,7 +186,12 @@ func (c *ChainClient)Account(msg network.TcpMessage) error {
 		_ = json.Unmarshal(msg.Data, &Accounts)
 		log.Infof("账户数据存储成功:%+v", Accounts)
 	}
+	meta.AccountsTss = Accounts
 	return nil
+}
+
+func ChainRegister()  {
+	return
 }
 
 

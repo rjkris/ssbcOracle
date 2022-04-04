@@ -19,3 +19,7 @@ func TestToml(t *testing.T) {
 	}
 	fmt.Printf("%+v", config)
 }
+
+func TestMax(t *testing.T)  {
+	
+}

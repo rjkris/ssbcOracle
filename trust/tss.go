@@ -16,6 +16,7 @@ import (
 	"ssbcOracle/network"
 	"ssbcOracle/util"
 	"sync"
+	"time"
 )
 
 var TotalNums int
@@ -160,6 +161,7 @@ func (stc *SchnorrTssClient)ReceiveShares(msg network.TcpMessage) error {
 func (stc *SchnorrTssClient)ReceiveMsg(msg network.TcpMessage) error {
 	stc.Msg = msg.Data
 	log.Infof("%s收到%s发来的待签名数据", stc.ONode.Name, msg.From)
+	log.Infof("%s开始签名时间：%v", stc,stc.ONode.Name, time.Now().Unix())
 	if stc.ONode.Index == 1 || stc.ONode.Index == 2 { // 1和2两个节点进行签名
 		rk, _ := GetRandom32Bytes()
 		r := GetRiUsingRandomBytes(stc.ONode.PublicKey, rk) // 生成r
@@ -242,6 +244,9 @@ func (stc *SchnorrTssClient)StartSign(msg network.TcpMessage) error {
 func (stc *SchnorrTssClient)AggregateSign(msg network.TcpMessage) error {
 	stc.SignArrays = append(stc.SignArrays, msg.Data)
 	log.Infof("%s收到%s发来的签名分片", stc.ONode.Name, msg.From)
+	t := time.Since(meta.Report.StartConsensusTime)
+	log.Infof("%s的共识签名时间：%v", msg.From, t)
+	meta.Report.SignTimeArrays[stc.ONode.Index] = t
 	if len(stc.SignArrays) >= stc.ONode.MinNum {
 		log.Infof("收到足够的签名，开始聚合")
 		s := GetSUsingAllSi(stc.SignArrays)
@@ -254,13 +259,47 @@ func (stc *SchnorrTssClient)AggregateSign(msg network.TcpMessage) error {
 			"pk": "",
 			"data": string(stc.Msg),
 		}
-		NewEventMsgToChain(args, stc.Event)
+		meta.Report.ConsensusCostTime = time.Since(meta.Report.StartConsensusTime)
+		log.Infof("本次数据共识时间：%v", meta.Report.ConsensusCostTime)
+		log.Infof("链下数据报告生成成功：%+v", meta.Report)
+		reportBytes, _ := json.Marshal(meta.Report)
+		NewEventMsgToChain(args, stc)
+		tranParams1 := meta.PostTran{
+			From:       meta.AccountsTss[stc.Event.ChainId].AccountAddress,
+			To:         "688b4663a8904d8a29948871eb81fea0604a018a33d9679a8e25b8c483deff9f",
+			Dest:       "",
+			Contract:   "monitor",
+			Method:     "callbackDataMonitor",
+			Args:       string(reportBytes),
+			Value:      0,
+			PrivateKey: "",
+			PublicKey:  meta.AccountsTss[stc.Event.ChainId].PublicKey,
+			Sign:       "eyJTIjoiekNZbWhZdTA1L1MyY1lFUHZ6Sm1kYWhXSFBLV0I3ZUFEamtyQXVQMUpLWkZWYlBuZ3VNNDZtTEtxeFExZGlBQU41Sy9sLU91QWl4aVk0RkdkWXRxQ1VXSVBlR2JDS1liYk1WcXhJUENJN25xK3VOaCs4PSJ9",
+			Type:       3,
+		}
+
+		tranParams2 := meta.PostTran{
+			From:       meta.AccountsTss[stc.Event.ChainId].AccountAddress,
+			To:         "688b4663a8904d8a29948871eb81fea0604a018a33d9679a8e25b8c483deff9f",
+			Dest:       "",
+			Contract:   "credit",
+			Method:     "uploadPullCredit",
+			Args:       string(reportBytes),
+			Value:      0,
+			PrivateKey: "",
+			PublicKey:  meta.AccountsTss[stc.Event.ChainId].PublicKey,
+			Sign:       "1VnMVJZbW5zcTI3cUhhYWJxOStVUHViVGtnSzN4Y1NRdGFacHpkR1NMd2tGMnJqOTRIdmxpeVdxcHEiLCJSIjoiQkN3UWFNR1U2RitjZTlvWjYzM1JZR2R5NFJ0NVBzaWIrQXJ0OWtCZmlZR",
+			Type:       3,
+		}
+
+		log.Infof("发起交易调用监控智能合约：%+v", tranParams1)
+		log.Infof("发起交易调用信誉智能合约：%+v", tranParams2)
 		// 验证tss签名
 		var tssPublicKeys []*ecdsa.PublicKey
 		tssPublicKeys = append(tssPublicKeys, stc.ONode.PublicKey)
 
 		verifyResult, _ := VerifyXuperSignature(tssPublicKeys, tssSig, stc.Msg)
-		log.Infof("签名验证结果：%v", verifyResult)
+		log.Infof("聚合签名验证结果：%v", verifyResult)
 		// 结束当前数据的共识，初始化stc
 		stc.ResetStc()
 	}
@@ -336,6 +375,7 @@ func (stc *SchnorrTssClient)TssSign() {
 }
 
 // 接收广播的事件
+// todo：放到oracleNode中
 func (stc *SchnorrTssClient)ReceiveEvent(msg network.TcpMessage) error {
 	var event meta.Event
 	err := json.Unmarshal(msg.Data, &event)
@@ -348,20 +388,49 @@ func (stc *SchnorrTssClient)ReceiveEvent(msg network.TcpMessage) error {
 }
 
 // 发起事件消息
-func NewEventMsgToChain(args map[string]string, event meta.Event) error {
+func NewEventMsgToChain(args map[string]string, s *SchnorrTssClient) error {
 	argsBytes, _ := json.Marshal(args)
 	params := meta.EventMessageParams{
-		From:      "",
-		EventKey:  event.EventID,
-		PublicKey: "",
+		From:      meta.AccountsTss[s.Event.ChainId].AccountAddress,
+		EventKey:  s.Event.EventID,
+		PublicKey: meta.AccountsTss[s.Event.ChainId].PublicKey,
 		Args:      string(argsBytes),
 	}
 	paramsBytes, _ := json.Marshal(params)
-	resp, err := network.PostMsg("http://localhost:" + util.ChainConfs[event.ChainId].ClientPort + "/postEvent", paramsBytes)
+	resp, err := network.PostMsg("http://localhost:" + util.ChainConfs[s.Event.ChainId].ClientPort + "/postEvent", paramsBytes)
 	if err != nil {
 		log.Errorf("发起事件消息失败：%s", err)
 		return err
 	}
+	log.Infof("数据共识完成，发起事件消息：%+v", params)
 	log.Infof("发起事件消息成功：%s", resp)
 	return nil
 }
+
+	// api数据源
+	type ApiSource struct {
+		Url string
+		Path string
+		Headers map[string]interface{} // http请求头字段
+	}
+	// 请求api的参数
+	type ApiParams struct {
+		Source ApiSource
+		Method string // http请求方法
+		QueryParams map[string]interface{}// 查询参数
+		JsonParser string // 用于对结果进行json解析
+	}
+	// 联盟链数据源
+	type ChainSource struct {
+		Id string
+		Name string
+		Address string
+	}
+	// 跨链请求参数
+	type ChainParams struct {
+		ChainId string
+		ChainName string
+		Type string
+		Params map[string]interface{}
+	}
+

@@ -3,6 +3,7 @@ package chain
 import (
 	"fmt"
 	"testing"
+	"time"
 )
 
 //func TestListenEventHandler(t *testing.T) {
@@ -16,6 +17,7 @@ import (
 //}
 
 func TestGolang(t *testing.T)  {
+	tt := time.Now()
 	var params map[string]string
 	fmt.Println(len(params))
 	for k, v := range params {
@@ -23,4 +25,8 @@ func TestGolang(t *testing.T)  {
 	}
 	params = make(map[string]string)
 	params["data"] = "data"
+
+	time.Sleep(time.Duration(1)*time.Second)
+	fmt.Printf("tt: %v", tt.Unix())
+	fmt.Printf("duration: %v", time.Since(tt))
 }

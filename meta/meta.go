@@ -6,7 +6,12 @@ import (
 	"math/big"
 	"net"
 	"ssbcOracle/db"
+	"time"
 )
+
+var Report UnderChainReport
+var AccountsTss map[string]ChainAccount
+
 
 type TcpClient interface {
 	HandleRequest(conn net.Conn)
@@ -44,12 +49,14 @@ type EventMessageParams struct {
 	Args string `json:"args"`
 }
 
+// 表示唯一的api数据源
 type ApiSource struct {
 	Url string
 	Path string
 	Headers map[string]interface{}
 }
 
+// 请求api的参数
 type ApiParams struct {
 	Source ApiSource
 	Method string
@@ -57,6 +64,7 @@ type ApiParams struct {
 	JsonParser string // 用于对结果进行json解析
 }
 
+// 联盟链数据源
 type ChainSource struct {
 	Id string
 	Name string
@@ -64,6 +72,7 @@ type ChainSource struct {
 	ConsensusNode []CsNode
 }
 
+// 联盟链共识节点
 type CsNode struct {
 	Id string
 	PublicKey []byte
@@ -71,6 +80,7 @@ type CsNode struct {
 	Port string
 }
 
+// 跨链请求参数
 type ChainParams struct {
 	ChainId string
 	ChainName string
@@ -103,4 +113,13 @@ type OracleNode struct {
 	LocalPrivateKey *ecdsa.PrivateKey // 本地私钥
 	PublicKey       *ecdsa.PublicKey  // 统一公钥
 	DB              *db.KvDb
+}
+
+type UnderChainReport struct {
+	StartConsensusTime time.Time
+	ConsensusCostTime time.Duration
+	DataRequestTime time.Duration
+	SignIndexArrays []int
+	SignTimeArrays map[int]time.Duration
+	LocalCreditArrays map[int]float64
 }
