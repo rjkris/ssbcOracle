@@ -12,6 +12,7 @@ type TcpMessage struct {
 	Data []byte
 	From string
 	To string
+	Seq int
 }
 
 func TcpSend(addr string, msg TcpMessage)  {
@@ -26,10 +27,10 @@ func TcpSend(addr string, msg TcpMessage)  {
 	if err != nil {
 		log.Error(err)
 	}
-	log.Infof("tcp消息发送成功：%+v", msg)
+	//log.Infof("tcp消息发送成功：%+v", msg)
 }
 
-func BroadcastMsg(t string, data []byte, selfName string)  {
+func BroadcastMsg(t string, data []byte, selfName string, seq int)  {
 	for name, node := range util.NodeConfs {
 		if name == selfName {
 			continue
@@ -39,6 +40,7 @@ func BroadcastMsg(t string, data []byte, selfName string)  {
 			Data: data,
 			From: selfName,
 			To:   node.Name,
+			Seq:  seq,
 		}
 		TcpSend(node.Addr, reqMsg)
 	}

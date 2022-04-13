@@ -75,10 +75,10 @@ func (c *ChainClient)EventHandler(stc *trust.SchnorrTssClient) error {
 		stc.TssStatus = true
 		// 广播事件
 		stc.Event = event
-		network.BroadcastMsg("ReceiveEvent", []byte(data), c.oNode.Name)
+		network.BroadcastMsg("ReceiveEvent", []byte(data), c.oNode.Name, 0)
 		stc.Msg = dataBytes
 		// 广播数据，开始对数据签名共识，主节点对签名聚合后发起事件消息
-		network.BroadcastMsg("ReceiveMsg", dataBytes, c.oNode.Name)
+		network.BroadcastMsg("ReceiveMsg", dataBytes, c.oNode.Name, 0)
 	case "3": // 预言机向链上push数据, 目前不进行共识
 		NewTransaction(event)
 	}
@@ -176,7 +176,7 @@ func NewTransaction(event meta.Event) error{
 func (c *ChainClient)Account(msg network.TcpMessage) error {
 	if c.oNode.Name == "n0" { // 主节点注册账户
 		accountBytes, _ := AccountRegister(c.db)
-		network.BroadcastMsg("account", accountBytes, c.oNode.Name)
+		network.BroadcastMsg("account", accountBytes, c.oNode.Name, 0)
 	}else { // 其他节点直接存储下来
 		err := c.db.DBPut(meta.AccountKey, msg.Data)
 		if err != nil {
@@ -190,7 +190,7 @@ func (c *ChainClient)Account(msg network.TcpMessage) error {
 	return nil
 }
 
-func ChainRegister()  {
+func ChainRegister(name string)  {
 	return
 }
 

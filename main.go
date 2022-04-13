@@ -16,7 +16,6 @@ import (
 )
 
 func main() {
-
 	meta.Report.LocalCreditArrays = make(map[int]float64)
 	meta.Report.SignTimeArrays = make(map[int]time.Duration)
 	meta.Report.SignIndexArrays = []int{1, 2}
@@ -26,12 +25,27 @@ func main() {
 	}
 	id := os.Args[1]
 
+	if id == "n0" {
+		if util.IsExist("./per_log") {
+			err := os.Remove("./per_log")
+			if err != nil {
+				log.Errorf("日志文件删除失败：%s",err)
+			}
+		}
+		logFile, _ := os.OpenFile("./per_log",os.O_WRONLY|os.O_CREATE|os.O_SYNC|os.O_APPEND,0755)
+		os.Stdout = logFile
+		defer logFile.Close()
+	}
+
 	switch id {
 	//case "oracle":
 	//	db.InitRedis("127.0.0.1:6379")
 	//	chain.ListenEventHandler()
+
 	case "dkg": // 节点开始dkg
 		dkgClient()
+	case "per":
+		performanceClient(os.Args[2])
 	case "sign": // 签名测试
 		name := os.Args[2]
 		addr := util.NodeConfs[name].Addr
@@ -45,17 +59,17 @@ func main() {
 		oNode := util.NodeConfs[id]
 		trust.NewOracleNode(&oNode, kdb)
 		// 初始化account
-		acBytes := kdb.DBGet(meta.AccountKey)
-		_ = json.Unmarshal(acBytes, &chain.Accounts)
+		//acBytes := kdb.DBGet(meta.AccountKey)
+		//_ = json.Unmarshal(acBytes, &chain.Accounts)
 		// 初始化tssClient
 		stc := trust.NewTssClient(&oNode)
 		// 初始化chainClient
 		c := chain.NewChainClient(&oNode, kdb)
 
-		if oNode.Name == "n0" {
-			db.InitRedis("127.0.0.1:6379")
-			go c.ListenEventHandler(stc)
-		}
+		//if oNode.Name == "n0" {
+		//	db.InitRedis("127.0.0.1:6379")
+		//	go c.ListenEventHandler(stc)
+		//}
 		go TcpListen(c, stc, oNode.Addr) // 开启tss tcp服务
 		select {}
 	}
@@ -95,6 +109,18 @@ func accountClient()  {
 	network.TcpSend(util.NodeConfs["n0"].Addr, msg)
 }
 
+// 性能测试
+func performanceClient(num string)  {
+	msg := network.TcpMessage{
+		Type: "PerformanceTest",
+		Data: []byte(num),
+		From: "",
+		To:   "",
+		Seq:  0,
+	}
+	network.TcpSend(util.NodeConfs["n0"].Addr, msg)
+}
+
 func TcpListen(c*chain.ChainClient, stc *trust.SchnorrTssClient, addr string)  {
 	listen, err := net.Listen("tcp", addr)
 	if err != nil {
@@ -103,7 +129,7 @@ func TcpListen(c*chain.ChainClient, stc *trust.SchnorrTssClient, addr string)  {
 	log.Infof("开启tcp监听：%s", addr)
 	for {
 		conn, err := listen.Accept()
-		log.Infof("新建tcp连接,remote: %s, local: %s", conn.RemoteAddr(), conn.LocalAddr())
+		//log.Infof("新建tcp连接,remote: %s, local: %s", conn.RemoteAddr(), conn.LocalAddr())
 		if err != nil {
 			log.Error(err)
 		}
@@ -121,7 +147,7 @@ func HandleRequest(c *chain.ChainClient, stc *trust.SchnorrTssClient, conn net.C
 	if err != nil {
 		log.Errorf("tcpMessage unmarshal error: %s", err)
 	}
-	log.Infof("收到请求: %+v", tmsg)
+	//log.Infof("收到请求: %+v", tmsg)
 	switch tmsg.Type {
 	case "ReceiveShares":
 		stc.ReceiveShares(tmsg) // dkg参数交换
@@ -139,11 +165,10 @@ func HandleRequest(c *chain.ChainClient, stc *trust.SchnorrTssClient, conn net.C
 		stc.TssSign()
 	case "ReceiveEvent":
 		stc.ReceiveEvent(tmsg)
+	case "PerformanceTest":
+		stc.PerformanceTest(tmsg)
 	case "account":
 		c.Account(tmsg) // 注册账户
 	}
 }
 
-func performanceTest()  {
-
-}
