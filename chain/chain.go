@@ -8,6 +8,7 @@ import (
 	"ssbcOracle/network"
 	"ssbcOracle/trust"
 	"ssbcOracle/util"
+	"sync"
 	"time"
 )
 
@@ -27,11 +28,11 @@ func (c *ChainClient)ListenEventHandler(stc *trust.SchnorrTssClient) {
 			break
 		}
 	}
-	time.Sleep(time.Duration(1)*time.Second) // sleep3秒确保密钥生成完成
+	time.Sleep(time.Duration(1)*time.Second) // sleep1秒确保密钥生成完成
 	for {
-		if stc.TssStatus == true { // 正在进行数据共识，等待
-			continue
-		}
+		//if stc.TssStatus == true { // 正在进行数据共识，等待
+		//	continue
+		//}
 		c.EventHandler(stc)
 	}
 }
@@ -75,10 +76,16 @@ func (c *ChainClient)EventHandler(stc *trust.SchnorrTssClient) error {
 		stc.TssStatus = true
 		// 广播事件
 		stc.Event = event
-		network.BroadcastMsg("ReceiveEvent", []byte(data), c.oNode.Name, 0)
+		network.BroadcastMsg("ReceiveEvent", []byte(data), c.oNode.Name, "")
 		stc.Msg = dataBytes
 		// 广播数据，开始对数据签名共识，主节点对签名聚合后发起事件消息
-		network.BroadcastMsg("ReceiveMsg", dataBytes, c.oNode.Name, 0)
+		// 对于跨链数据共识，seq为事件ID
+		stc.SessionsMap.Store(event.EventID, &trust.TssSessionData{})
+		sValue, _ := stc.SessionsMap.Load(event.EventID)
+		curSession := sValue.(*trust.TssSessionData)
+		curSession.StartTime = time.Now()
+		curSession.Mutex = sync.Mutex{}
+		network.BroadcastMsg("ReceiveMsg", dataBytes, c.oNode.Name, event.EventID)
 	case "3": // 预言机向链上push数据, 目前不进行共识
 		NewTransaction(event)
 	}
@@ -176,7 +183,7 @@ func NewTransaction(event meta.Event) error{
 func (c *ChainClient)Account(msg network.TcpMessage) error {
 	if c.oNode.Name == "n0" { // 主节点注册账户
 		accountBytes, _ := AccountRegister(c.db)
-		network.BroadcastMsg("account", accountBytes, c.oNode.Name, 0)
+		network.BroadcastMsg("account", accountBytes, c.oNode.Name, "")
 	}else { // 其他节点直接存储下来
 		err := c.db.DBPut(meta.AccountKey, msg.Data)
 		if err != nil {
@@ -188,6 +195,19 @@ func (c *ChainClient)Account(msg network.TcpMessage) error {
 	}
 	meta.AccountsTss = Accounts
 	return nil
+}
+
+// 在所有预言机节点就绪后自动进行账户注册和分布式密钥生成
+func (c *ChainClient) Ready(msg network.TcpMessage, stc *trust.SchnorrTssClient) {
+	c.oNode.Mutex.Lock()
+	defer c.oNode.Mutex.Unlock()
+	c.oNode.ReadyNum ++
+	if c.oNode.ReadyNum+1 == c.oNode.TotalNum {
+		log.Info("所有节点准备就绪")
+		c.Account(msg)
+		network.BroadcastMsg("TssDkg", nil, c.oNode.Name, "")
+		stc.TssDkg()
+	}
 }
 
 func ChainRegister(name string)  {

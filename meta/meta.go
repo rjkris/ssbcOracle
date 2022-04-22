@@ -2,10 +2,12 @@ package meta
 
 import (
 	"crypto/ecdsa"
+	"crypto/ed25519"
 	"github.com/xuperchain/crypto/common/math/ecc"
 	"math/big"
 	"net"
 	"ssbcOracle/db"
+	"sync"
 	"time"
 )
 
@@ -110,9 +112,13 @@ type OracleNode struct {
 	VerifyPoints    []*ecc.Point
 	SharesNum       int
 	PointsNum       int
-	LocalPrivateKey *ecdsa.PrivateKey // 本地私钥
-	PublicKey       *ecdsa.PublicKey  // 统一公钥
+	LocalPrivateKey *ecdsa.PrivateKey // tss本地私钥
+	PublicKey       *ecdsa.PublicKey  // tss统一公钥
 	DB              *db.KvDb
+	Sk              *ed25519.PrivateKey
+	Pk              *ed25519.PublicKey
+	ReadyNum        int
+	Mutex           sync.Mutex
 }
 
 type UnderChainReport struct {

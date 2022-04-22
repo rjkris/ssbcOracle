@@ -5,7 +5,7 @@
     clientPort = "8009"
 
     [chains.ssbc2]
-    id = "0"
+    id = "1"
     name = "ssbc2"
     clientPort = "8011"
 

@@ -12,7 +12,7 @@ type TcpMessage struct {
 	Data []byte
 	From string
 	To string
-	Seq int
+	Seq string
 }
 
 func TcpSend(addr string, msg TcpMessage)  {
@@ -30,7 +30,7 @@ func TcpSend(addr string, msg TcpMessage)  {
 	//log.Infof("tcp消息发送成功：%+v", msg)
 }
 
-func BroadcastMsg(t string, data []byte, selfName string, seq int)  {
+func BroadcastMsg(t string, data []byte, selfName string, seq string)  {
 	for name, node := range util.NodeConfs {
 		if name == selfName {
 			continue

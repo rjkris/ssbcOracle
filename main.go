@@ -25,7 +25,7 @@ func main() {
 	}
 	id := os.Args[1]
 
-	if id == "n0" {
+	if id == "n0" { // 性能测试日志文件
 		if util.IsExist("./per_log") {
 			err := os.Remove("./per_log")
 			if err != nil {
@@ -38,10 +38,6 @@ func main() {
 	}
 
 	switch id {
-	//case "oracle":
-	//	db.InitRedis("127.0.0.1:6379")
-	//	chain.ListenEventHandler()
-
 	case "dkg": // 节点开始dkg
 		dkgClient()
 	case "per":
@@ -58,19 +54,29 @@ func main() {
 		// 初始化节点
 		oNode := util.NodeConfs[id]
 		trust.NewOracleNode(&oNode, kdb)
+		// 初始化密钥
+		util.InitSecretKey(id, &oNode)
 		// 初始化account
-		//acBytes := kdb.DBGet(meta.AccountKey)
-		//_ = json.Unmarshal(acBytes, &chain.Accounts)
+		acBytes := kdb.DBGet(meta.AccountKey)
+		_ = json.Unmarshal(acBytes, &chain.Accounts)
 		// 初始化tssClient
 		stc := trust.NewTssClient(&oNode)
 		// 初始化chainClient
 		c := chain.NewChainClient(&oNode, kdb)
 
-		//if oNode.Name == "n0" {
-		//	db.InitRedis("127.0.0.1:6379")
-		//	go c.ListenEventHandler(stc)
-		//}
 		go TcpListen(c, stc, oNode.Addr) // 开启tss tcp服务
+		// n0作为主节点和监听节点
+		if oNode.Name == "n0" {
+			db.InitRedis("127.0.0.1:6379")
+			go c.ListenEventHandler(stc)
+		} else { // 共识节点就绪后通知主节点
+			msg := network.TcpMessage{
+				Type: "Ready",
+				From: id,
+				To:   "n0",
+			}
+			network.TcpSend(util.NodeConfs[msg.To].Addr, msg)
+		}
 		select {}
 	}
 }
@@ -116,7 +122,6 @@ func performanceClient(num string)  {
 		Data: []byte(num),
 		From: "",
 		To:   "",
-		Seq:  0,
 	}
 	network.TcpSend(util.NodeConfs["n0"].Addr, msg)
 }
@@ -169,6 +174,8 @@ func HandleRequest(c *chain.ChainClient, stc *trust.SchnorrTssClient, conn net.C
 		stc.PerformanceTest(tmsg)
 	case "account":
 		c.Account(tmsg) // 注册账户
+	case "Ready":
+		c.Ready(tmsg, stc)
 	}
 }
 

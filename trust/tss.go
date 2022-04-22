@@ -52,14 +52,14 @@ type SchnorrTssClient struct {
 }
 
 type TssSessionData struct {
-	StartTime       time.Time
-	LocalRk         []byte            // 本地随机数rk
-	LocalRi         []byte            // 本地ri
-	RiArrays        [][]byte
-	IndexArrays     []int    // 参与签名的节点编号集合
-	R               []byte   // 签名中收集的R =k1*G + k2*G + ... + kn*G
-	SignArrays      [][]byte // 各个参与节点的签名列表
-	mutex            sync.Mutex
+	StartTime   time.Time
+	LocalRk     []byte            // 本地随机数rk
+	LocalRi     []byte            // 本地ri
+	RiArrays    [][]byte
+	IndexArrays []int    // 参与签名的节点编号集合
+	R           []byte   // 签名中收集的R =k1*G + k2*G + ... + kn*G
+	SignArrays  [][]byte // 各个参与节点的签名列表
+	Mutex       sync.Mutex
 }
 
 
@@ -72,6 +72,7 @@ func NewOracleNode(node *meta.OracleNode, db *db.KvDb) {
 	node.SharesNum = 0
 	node.PointsNum = 0
 	node.DB = db
+	node.Mutex = sync.Mutex{}
 }
 
 func NewTssClient(node *meta.OracleNode) *SchnorrTssClient {
@@ -208,8 +209,8 @@ func (stc *SchnorrTssClient)CalR(msg network.TcpMessage) error {
 	//curSession := stc.Sessions[msg.Seq]
 	sValue, _ := stc.SessionsMap.Load(msg.Seq)
 	curSession := sValue.(*TssSessionData)
-	curSession.mutex.Lock()
-	defer curSession.mutex.Unlock()
+	curSession.Mutex.Lock()
+	defer curSession.Mutex.Unlock()
 	curSession.RiArrays = append(curSession.RiArrays, ri)
 	curSession.IndexArrays = append(curSession.IndexArrays, util.NodeConfs[msg.From].Index)
 	log.Infof("%s收到%s发来的签名参数Ri", stc.ONode.Name, msg.From)
@@ -280,8 +281,8 @@ func (stc *SchnorrTssClient)AggregateSign(msg network.TcpMessage) error {
 	//curSession := stc.Sessions[msg.Seq]
 	sValue, _ := stc.SessionsMap.Load(msg.Seq)
 	curSession := sValue.(*TssSessionData)
-	curSession.mutex.Lock() // 并发执行多个请求，需要对当前session加锁
-	defer curSession.mutex.Unlock()
+	curSession.Mutex.Lock() // 并发执行多个请求，需要对当前session加锁
+	defer curSession.Mutex.Unlock()
 	curSession.SignArrays = append(curSession.SignArrays, msg.Data)
 	log.Infof("%s收到%s发来的签名分片", stc.ONode.Name, msg.From)
 	t := time.Since(meta.Report.StartConsensusTime)
@@ -292,20 +293,20 @@ func (stc *SchnorrTssClient)AggregateSign(msg network.TcpMessage) error {
 		s := GetSUsingAllSi(curSession.SignArrays)
 		//	log.Printf("all of s is: %d", big.NewInt(0).SetBytes(s))
 		tssSig, _ := GenerateTssSignSignature(s, curSession.R)
-		fmt.Printf("cost %d %+v\n", msg.Seq, time.Since(curSession.StartTime))
-		fmt.Printf("end %d %d\n", msg.Seq, time.Now().UnixNano() / 1e6)
+		fmt.Printf("cost %s %+v\n", msg.Seq, time.Since(curSession.StartTime))
+		fmt.Printf("end %s %d\n", msg.Seq, time.Now().UnixNano() / 1e6)
 		log.Infof("聚合生成签名成功：%s", string(tssSig))
 		// 发起事件消息
-		//args := map[string]string{
-		//	"signature": string(tssSig),
-		//	"pk": "",
-		//	"data": string(stc.Msg),
-		//}
+		args := map[string]string{
+			"signature": string(tssSig),
+			"pk": "",
+			"data": string(stc.Msg),
+		}
 		meta.Report.ConsensusCostTime = time.Since(meta.Report.StartConsensusTime)
-		//log.Infof("本次数据共识时间：%v", meta.Report.ConsensusCostTime)
-		//log.Infof("链下数据报告生成成功：%+v", meta.Report)
+		log.Infof("本次数据共识时间：%v", meta.Report.ConsensusCostTime)
+		log.Infof("链下数据报告生成成功：%+v", meta.Report)
 		//reportBytes, _ := json.Marshal(meta.Report)
-		//NewEventMsgToChain(args, stc)
+		NewEventMsgToChain(args, stc)
 		//tranParams1 := meta.PostTran{
 		//	From:       meta.AccountsTss[stc.Event.ChainId].AccountAddress,
 		//	To:         "688b4663a8904d8a29948871eb81fea0604a018a33d9679a8e25b8c483deff9f",
@@ -341,10 +342,12 @@ func (stc *SchnorrTssClient)AggregateSign(msg network.TcpMessage) error {
 		tssPublicKeys = append(tssPublicKeys, stc.ONode.PublicKey)
 
 		verifyResult, _ := VerifyXuperSignature(tssPublicKeys, tssSig, stc.Msg)
-		log.Infof("%d聚合签名验证结果：%v", msg.Seq, verifyResult)
+		log.Infof("%s聚合签名验证结果：%v", msg.Seq, verifyResult)
 		//log.Infof("%d门限签名共识总耗时：%+v", msg.Seq, time.Since(curSession.StartTime))
 		// 结束当前数据的共识，初始化stc
 		//stc.ResetStc()
+		// 清除本次数据共识session
+		stc.SessionsMap.Delete(msg.Seq)
 	}
 	return nil
 }
@@ -463,14 +466,13 @@ func (stc *SchnorrTssClient)PerformanceTest(data network.TcpMessage)  {
 		//}
 		//startTime := time.Now()
 		//stc.Sessions[i] = &TssSessionData{}
-		stc.SessionsMap.Store(i, &TssSessionData{})
-		//curSession := stc.Sessions[i]
-		sValue, _ := stc.SessionsMap.Load(i)
+		seq := strconv.Itoa(i)
+		stc.SessionsMap.Store(seq, &TssSessionData{})
+		sValue, _ := stc.SessionsMap.Load(seq)
 		curSession := sValue.(*TssSessionData)
 		curSession.StartTime = time.Now()
-		curSession.mutex = sync.Mutex{}
-		network.BroadcastMsg("ReceiveMsg", []byte(msg), stc.ONode.Name, i)
+		curSession.Mutex = sync.Mutex{}
+		network.BroadcastMsg("ReceiveMsg", []byte(msg), stc.ONode.Name, seq)
 	}
-
 }
 
