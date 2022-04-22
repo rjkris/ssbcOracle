@@ -8,6 +8,7 @@ import (
 	"ssbcOracle/network"
 	"ssbcOracle/trust"
 	"ssbcOracle/util"
+	"strings"
 	"sync"
 	"time"
 )
@@ -92,7 +93,7 @@ func (c *ChainClient)EventHandler(stc *trust.SchnorrTssClient) error {
 	return nil
 }
 
-// 注册预言机账户 
+// 注册预言机账户
 func AccountRegister(db *db.KvDb) ([]byte, error) {
 	for id, info := range util.ChainConfs {
 		if len(Accounts) == 0 {
@@ -127,7 +128,7 @@ func GetDataFromChain(event meta.Event) ([]byte, error) {
 	url := "http://localhost:"+targetPort+"/query"
 	chainParams := meta.Query{
 		Type:       event.Args["dataType"],
-		Parameters: []string{event.Args["params"]},
+		Parameters: strings.Split(event.Args["params"], ","),
 	}
 	chainParamsBytes, _ := json.Marshal(chainParams)
 	var res network.HttpResponse
