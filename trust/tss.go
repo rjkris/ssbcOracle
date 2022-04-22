@@ -45,7 +45,7 @@ type SchnorrTssClient struct {
 	Event           meta.Event
 	Mutex           sync.Mutex
 	SequenceId      int // 数据序列号
-	TssStatus       bool // 预言机数据共识状态，目前顺序进行
+	TssStatus       bool // 预言机数据共识状态
 	Sessions        map[int]*TssSessionData
 	SessionsMap     sync.Map
 	//db              *db.KvDb

@@ -70,6 +70,7 @@ func main() {
 			db.InitRedis("127.0.0.1:6379")
 			go c.ListenEventHandler(stc)
 		} else { // 共识节点就绪后通知主节点
+			time.Sleep(time.Duration(1)*time.Second) // 确保主节点启动完成
 			msg := network.TcpMessage{
 				Type: "Ready",
 				From: id,
