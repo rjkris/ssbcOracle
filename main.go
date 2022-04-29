@@ -57,8 +57,9 @@ func main() {
 		// 初始化密钥
 		util.InitSecretKey(id, &oNode)
 		// 初始化account
-		acBytes := kdb.DBGet(meta.AccountKey)
-		_ = json.Unmarshal(acBytes, &chain.Accounts)
+		//acBytes := kdb.DBGet(meta.AccountKey)
+		//_ = json.Unmarshal(acBytes, &chain.Accounts)
+		chain.Accounts = map[string]meta.ChainAccount{}
 		// 初始化tssClient
 		stc := trust.NewTssClient(&oNode)
 		// 初始化chainClient
