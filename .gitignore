@@ -2,3 +2,5 @@ ssbcOracle
 ssbcOracle.exe
 db/leveldb/*
 Keys/*
+log/*
+per_log

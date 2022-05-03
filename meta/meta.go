@@ -126,8 +126,8 @@ type UnderChainReport struct {
 	StartConsensusTime time.Time // 开始共识时间
 	ConsensusCostTime time.Duration // 共识耗时
 	DataRequestTime time.Duration // 数据请求时间
-	SignIndexArrays []int // 门限签名结果
-	SignTimeArrays map[int]time.Duration // 签名时间
+	SignNodeArrays []string // 门限签名结果
+	SignTimeArrays map[string]time.Duration // 签名时间
 	LeaderNode int // 主节点序号
 	EventVerifyResult map[int]bool // 事件验证结果
 	Data interface{} // 共识数据

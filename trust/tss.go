@@ -57,6 +57,7 @@ type TssSessionData struct {
 	LocalRi     []byte            // 本地ri
 	RiArrays    [][]byte
 	IndexArrays []int    // 参与签名的节点编号集合
+	SignNameArrays []string // 参与签名的节点集合
 	R           []byte   // 签名中收集的R =k1*G + k2*G + ... + kn*G
 	SignArrays  [][]byte // 各个参与节点的签名列表
 	Report      meta.UnderChainReport
@@ -218,6 +219,7 @@ func (stc *SchnorrTssClient)CalR(msg network.TcpMessage) error {
 	fromIndex := util.NodeConfs[msg.From].Index
 	curSession.RiArrays = append(curSession.RiArrays, ri)
 	curSession.IndexArrays = append(curSession.IndexArrays, fromIndex)
+	curSession.SignNameArrays = append(curSession.SignNameArrays, msg.From)
 	curSession.Report.EventVerifyResult[fromIndex] = true
 	log.Infof("%s收到%s发来的签名参数Ri", stc.ONode.Name, msg.From)
 	if len(curSession.RiArrays) >= stc.ONode.MinNum {
@@ -238,7 +240,9 @@ func (stc *SchnorrTssClient)CalR(msg network.TcpMessage) error {
 		c := elliptic.Marshal(stc.ONode.PublicKey.Curve, stc.ONode.PublicKey.X, stc.ONode.PublicKey.Y)
 		sign := GetSiUsingKCRMWithCoef(curSession.LocalRk, c, r, stc.Msg, w)
 		curSession.SignArrays = append(curSession.SignArrays, sign)
-
+		t := time.Since(curSession.Report.StartConsensusTime)
+		//log.Infof("%s的共识签名时间：%v", msg.From, t)
+		curSession.Report.SignTimeArrays[stc.ONode.Name] = t
 		// 广播本次签名的r
 		params := util.StartSignParams{
 			R:           r,
@@ -252,12 +256,12 @@ func (stc *SchnorrTssClient)CalR(msg network.TcpMessage) error {
 			To:   "",
 			Seq:  msg.Seq,
 		}
-		for name, node := range util.NodeConfs {
+		for _, name := range curSession.SignNameArrays {
 			if name == stc.ONode.Name {
 				continue
 			}
 			reqMsg.To = name
-			network.TcpSend(node.Addr, reqMsg)
+			network.TcpSend(util.NodeConfs[name].Addr, reqMsg)
 		}
 	}
 	return nil
@@ -309,7 +313,7 @@ func (stc *SchnorrTssClient)AggregateSign(msg network.TcpMessage) error {
 	log.Infof("%s收到%s发来的签名分片", stc.ONode.Name, msg.From)
 	t := time.Since(curSession.Report.StartConsensusTime)
 	//log.Infof("%s的共识签名时间：%v", msg.From, t)
-	curSession.Report.SignTimeArrays[stc.ONode.Index] = t
+	curSession.Report.SignTimeArrays[msg.From] = t
 	if len(curSession.SignArrays) >= stc.ONode.MinNum {
 		log.Infof("收到足够的签名，开始聚合")
 		s := GetSUsingAllSi(curSession.SignArrays)
@@ -318,7 +322,7 @@ func (stc *SchnorrTssClient)AggregateSign(msg network.TcpMessage) error {
 		fmt.Printf("cost %s %+v\n", msg.Seq, time.Since(curSession.StartTime))
 		fmt.Printf("end %s %d\n", msg.Seq, time.Now().UnixNano() / 1e6)
 		log.Infof("聚合生成签名成功：%s", string(tssSig))
-		curSession.Report.SignIndexArrays = curSession.IndexArrays
+		curSession.Report.SignNodeArrays = curSession.SignNameArrays
 		// 发起事件消息
 		args := map[string]string{
 			"signature": string(tssSig),
@@ -510,6 +514,7 @@ func LeaderNodeSign(curSession *TssSessionData, stc *SchnorrTssClient)  {
 	curSession.LocalRi = r
 	curSession.RiArrays = append(curSession.RiArrays, r)
 	curSession.IndexArrays = append(curSession.IndexArrays, stc.ONode.Index)
+	curSession.SignNameArrays = append(curSession.SignNameArrays, stc.ONode.Name)
 	curSession.Report.EventVerifyResult[stc.ONode.Index] = true
 }
 
@@ -520,7 +525,7 @@ func InitTssSession(stc *SchnorrTssClient, event meta.Event) *TssSessionData {
 	sValue, _ := stc.SessionsMap.Load(event.EventID)
 	curSession := sValue.(*TssSessionData)
 	curSession.StartTime = time.Now()
-	curSession.Report.SignTimeArrays = make(map[int]time.Duration)
+	curSession.Report.SignTimeArrays = make(map[string]time.Duration)
 	curSession.Report.EventVerifyResult = make(map[int]bool)
 	curSession.Mutex = sync.Mutex{}
 	curSession.Report.StartConsensusTime = startConTime
