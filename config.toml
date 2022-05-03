@@ -24,3 +24,9 @@
     name = "n2"
     index = 2
     addr = "127.0.0.1:9002"
+
+    [nodes.n3]
+    name = "n3"
+    index = 3
+    addr = "127.0.0.1:9003"
+

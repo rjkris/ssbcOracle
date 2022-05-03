@@ -9,7 +9,6 @@ import (
 	"ssbcOracle/trust"
 	"ssbcOracle/util"
 	"strings"
-	"sync"
 	"time"
 )
 
@@ -71,21 +70,17 @@ func (c *ChainClient)EventHandler(stc *trust.SchnorrTssClient) error {
 		//log.Info(string(res))
 		return nil
 	case "2": // 预言机从链上pull数据
+		curSession := trust.InitTssSession(stc, event)
 		// 主节点拉取数据
-		meta.Report.StartConsensusTime = time.Now()
-		dataBytes, _ := GetDataFromChain(event)
+		dataBytes, _ := GetDataFromChain(event, curSession)
 		stc.TssStatus = true
+		// 主节点签名
+		trust.LeaderNodeSign(curSession, stc)
 		// 广播事件
 		stc.Event = event
 		network.BroadcastMsg("ReceiveEvent", []byte(data), c.oNode.Name, "")
 		stc.Msg = dataBytes
 		// 广播数据，开始对数据签名共识，主节点对签名聚合后发起事件消息
-		// 对于跨链数据共识，seq为事件ID
-		stc.SessionsMap.Store(event.EventID, &trust.TssSessionData{})
-		sValue, _ := stc.SessionsMap.Load(event.EventID)
-		curSession := sValue.(*trust.TssSessionData)
-		curSession.StartTime = time.Now()
-		curSession.Mutex = sync.Mutex{}
 		network.BroadcastMsg("ReceiveMsg", dataBytes, c.oNode.Name, event.EventID)
 	case "3": // 预言机向链上push数据, 目前不进行共识
 		NewTransaction(event)
@@ -121,7 +116,7 @@ func AccountRegister(db *db.KvDb) ([]byte, error) {
 	return accountsBytes, nil
 }
 
-func GetDataFromChain(event meta.Event) ([]byte, error) {
+func GetDataFromChain(event meta.Event, session *trust.TssSessionData) ([]byte, error) {
 	t := time.Now()
 	chainName := event.Args["name"] // 目标链名
 	targetPort := util.ChainConfs[chainName].ClientPort
@@ -141,7 +136,7 @@ func GetDataFromChain(event meta.Event) ([]byte, error) {
 	log.Infof("跨链数据请求成功：%+v", res)
 	dataBytes, _ := json.Marshal(res.Data)
 	log.Infof("共识节点请求数据时间 ：%s", time.Since(t))
-	meta.Report.DataRequestTime = time.Since(t)
+	session.Report.DataRequestTime = time.Since(t)
 	return dataBytes, nil
 }
 

@@ -12,14 +12,12 @@ import (
 	"ssbcOracle/network"
 	"ssbcOracle/trust"
 	"ssbcOracle/util"
+	"sync"
 	"time"
 )
 
 func main() {
-	meta.Report.LocalCreditArrays = make(map[int]float64)
-	meta.Report.SignTimeArrays = make(map[int]time.Duration)
-	meta.Report.SignIndexArrays = []int{1, 2}
-	meta.Report.LocalCreditArrays = map[int]float64{0:0.5, 1:0.5, 2:0.5}
+	meta.Reputation.Mutex = sync.Mutex{}
 	if len(os.Args) < 2 {
 		return
 	}
@@ -57,8 +55,9 @@ func main() {
 		// 初始化密钥
 		util.InitSecretKey(id, &oNode)
 		// 初始化account
-		acBytes := kdb.DBGet(meta.AccountKey)
-		_ = json.Unmarshal(acBytes, &chain.Accounts)
+		//acBytes := kdb.DBGet(meta.AccountKey)
+		//_ = json.Unmarshal(acBytes, &chain.Accounts)
+		chain.Accounts = map[string]meta.ChainAccount{}
 		// 初始化tssClient
 		stc := trust.NewTssClient(&oNode)
 		// 初始化chainClient

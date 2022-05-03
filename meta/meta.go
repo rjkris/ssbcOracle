@@ -12,6 +12,7 @@ import (
 )
 
 var Report UnderChainReport
+var Reputation OracleReputation
 var AccountsTss map[string]ChainAccount
 
 
@@ -122,10 +123,19 @@ type OracleNode struct {
 }
 
 type UnderChainReport struct {
-	StartConsensusTime time.Time
-	ConsensusCostTime time.Duration
-	DataRequestTime time.Duration
-	SignIndexArrays []int
-	SignTimeArrays map[int]time.Duration
-	LocalCreditArrays map[int]float64
+	StartConsensusTime time.Time // 开始共识时间
+	ConsensusCostTime time.Duration // 共识耗时
+	DataRequestTime time.Duration // 数据请求时间
+	SignIndexArrays []int // 门限签名结果
+	SignTimeArrays map[int]time.Duration // 签名时间
+	LeaderNode int // 主节点序号
+	EventVerifyResult map[int]bool // 事件验证结果
+	Data interface{} // 共识数据
+	ConsensusResult bool // 共识结果
+}
+
+type OracleReputation struct {
+	LocalCreditArrays map[int]float64 // 预言机节点之间的局部信誉
+	GlobalCreditArrays []float64 // 预言机节点的全局信誉
+	Mutex sync.Mutex
 }
