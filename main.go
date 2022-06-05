@@ -52,6 +52,8 @@ func main() {
 		// 初始化节点
 		oNode := util.NodeConfs[id]
 		trust.NewOracleNode(&oNode, kdb)
+		// 初始化预言机节点信誉值
+		trust.InitReputation()
 		// 初始化密钥
 		util.InitSecretKey(id, &oNode)
 		// 初始化account

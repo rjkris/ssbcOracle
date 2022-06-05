@@ -192,20 +192,20 @@ func (stc *SchnorrTssClient)ReceiveMsg(msg network.TcpMessage) error {
 	curSession.StartTime = time.Now()
 	log.Infof("%s收到%s发来的待签名数据", stc.ONode.Name, msg.From)
 	//log.Infof("%s开始签名时间：%v", stc,stc.ONode.Name, time.Now().Unix())
-	if stc.ONode.Index == 1 || stc.ONode.Index == 2 { // 1和2两个节点进行签名
-		rk, _ := GetRandom32Bytes()
-		r := GetRiUsingRandomBytes(stc.ONode.PublicKey, rk) // 生成r
-		curSession.LocalRk = rk
-		curSession.LocalRi = r
-		reqMsg := network.TcpMessage{
-			Type: "CalR",
-			Data: r,
-			From: stc.ONode.Name,
-			To:   msg.From,
-			Seq:  msg.Seq,
-		}
-		network.TcpSend(util.NodeConfs[reqMsg.To].Addr, reqMsg)
+	//if stc.ONode.Index == 1 || stc.ONode.Index == 2 { // 1和2两个节点进行签名
+	rk, _ := GetRandom32Bytes()
+	r := GetRiUsingRandomBytes(stc.ONode.PublicKey, rk) // 生成r
+	curSession.LocalRk = rk
+	curSession.LocalRi = r
+	reqMsg := network.TcpMessage{
+		Type: "CalR",
+		Data: r,
+		From: stc.ONode.Name,
+		To:   msg.From,
+		Seq:  msg.Seq,
 	}
+	network.TcpSend(util.NodeConfs[reqMsg.To].Addr, reqMsg)
+	//}
 	return nil
 }
 
@@ -332,49 +332,17 @@ func (stc *SchnorrTssClient)AggregateSign(msg network.TcpMessage) error {
 		curSession.Report.ConsensusCostTime = time.Since(curSession.Report.StartConsensusTime)
 		curSession.Report.Data = string(stc.Msg)
 		log.Infof("本次数据共识时间：%v", curSession.Report.ConsensusCostTime)
-		log.Infof("链下数据报告生成成功：%+v", curSession.Report)
-		//reportBytes, _ := json.Marshal(meta.Report)
-		NewEventMsgToChain(args, stc)
-		//tranParams1 := meta.PostTran{
-		//	From:       meta.AccountsTss[stc.Event.ChainId].AccountAddress,
-		//	To:         "688b4663a8904d8a29948871eb81fea0604a018a33d9679a8e25b8c483deff9f",
-		//	Dest:       "",
-		//	Contract:   "monitor",
-		//	Method:     "callbackDataMonitor",
-		//	Args:       string(reportBytes),
-		//	Value:      0,
-		//	PrivateKey: "",
-		//	PublicKey:  meta.AccountsTss[stc.Event.ChainId].PublicKey,
-		//	Sign:       "eyJTIjoiekNZbWhZdTA1L1MyY1lFUHZ6Sm1kYWhXSFBLV0I3ZUFEamtyQXVQMUpLWkZWYlBuZ3VNNDZtTEtxeFExZGlBQU41Sy9sLU91QWl4aVk0RkdkWXRxQ1VXSVBlR2JDS1liYk1WcXhJUENJN25xK3VOaCs4PSJ9",
-		//	Type:       3,
-		//}
-		//
-		//tranParams2 := meta.PostTran{
-		//	From:       meta.AccountsTss[stc.Event.ChainId].AccountAddress,
-		//	To:         "688b4663a8904d8a29948871eb81fea0604a018a33d9679a8e25b8c483deff9f",
-		//	Dest:       "",
-		//	Contract:   "credit",
-		//	Method:     "uploadPullCredit",
-		//	Args:       string(reportBytes),
-		//	Value:      0,
-		//	PrivateKey: "",
-		//	PublicKey:  meta.AccountsTss[stc.Event.ChainId].PublicKey,
-		//	Sign:       "1VnMVJZbW5zcTI3cUhhYWJxOStVUHViVGtnSzN4Y1NRdGFacHpkR1NMd2tGMnJqOTRIdmxpeVdxcHEiLCJSIjoiQkN3UWFNR1U2RitjZTlvWjYzM1JZR2R5NFJ0NVBzaWIrQXJ0OWtCZmlZR",
-		//	Type:       3,
-		//}
-		//
-		//log.Infof("发起交易调用监控智能合约：%+v", tranParams1)
-		//log.Infof("发起交易调用信誉智能合约：%+v", tranParams2)
 		// 验证tss签名
 		var tssPublicKeys []*ecdsa.PublicKey
 		tssPublicKeys = append(tssPublicKeys, stc.ONode.PublicKey)
-
 		verifyResult, _ := VerifyXuperSignature(tssPublicKeys, tssSig, stc.Msg)
 		log.Infof("%s聚合签名验证结果：%v", msg.Seq, verifyResult)
+
 		curSession.Report.ConsensusResult = verifyResult
-		//log.Infof("%d门限签名共识总耗时：%+v", msg.Seq, time.Since(curSession.StartTime))
-		// 结束当前数据的共识，初始化stc
-		//stc.ResetStc()
+		log.Infof("链下数据报告生成成功：%+v", curSession.Report)
+		NewEventMsgToChain(args, stc, curSession.Report)
+		//log.Infof("发起交易调用监控智能合约：%+v", tranParams1)
+		//log.Infof("发起交易调用信誉智能合约：%+v", tranParams2)
 		// 清除本次数据共识session
 		stc.SessionsMap.Delete(msg.Seq)
 	}
@@ -463,13 +431,15 @@ func (stc *SchnorrTssClient)ReceiveEvent(msg network.TcpMessage) error {
 }
 
 // 发起事件消息
-func NewEventMsgToChain(args map[string]string, s *SchnorrTssClient) error {
+func NewEventMsgToChain(args map[string]string, s *SchnorrTssClient, report meta.UnderChainReport) error {
 	argsBytes, _ := json.Marshal(args)
+	reportBytes, _ := json.Marshal(report)
 	params := meta.EventMessageParams{
 		From:      meta.AccountsTss[s.Event.ChainId].AccountAddress,
 		EventKey:  s.Event.EventID,
 		PublicKey: meta.AccountsTss[s.Event.ChainId].PublicKey,
 		Args:      string(argsBytes),
+		Report:    string(reportBytes),
 	}
 	paramsBytes, _ := json.Marshal(params)
 	resp, err := network.PostMsg("http://localhost:" + util.ChainConfs[s.Event.ChainId].ClientPort + "/postEvent", paramsBytes)
@@ -503,6 +473,10 @@ func (stc *SchnorrTssClient)PerformanceTest(data network.TcpMessage)  {
 		curSession.Mutex = sync.Mutex{}
 		network.BroadcastMsg("ReceiveMsg", []byte(msg), stc.ONode.Name, seq)
 	}
+}
+
+func (stc *SchnorrTssClient) GenVrfHash(data network.TcpMessage) {
+	
 }
 
 func LeaderNodeSign(curSession *TssSessionData, stc *SchnorrTssClient)  {

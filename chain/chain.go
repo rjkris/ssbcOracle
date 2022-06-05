@@ -2,6 +2,7 @@ package chain
 
 import (
 	"encoding/json"
+	"errors"
 	"github.com/cloudflare/cfssl/log"
 	"ssbcOracle/db"
 	"ssbcOracle/meta"
@@ -59,15 +60,22 @@ func (c *ChainClient)EventHandler(stc *trust.SchnorrTssClient) error {
 	switch event.Type {
 	case "1": // 预言机从外部api获取数据
 		//method, ok := event.Args["method"]
-		//url, _ := event.Args["url"]
-		//var res []byte
-		//if ok {
-		//	switch method {
-		//	case "GET":
-		//		res, _ = network.GetMsg(url)
-		//	}
-		//}
-		//log.Info(string(res))
+		url, ok := event.Args["url"] // 默认通过get方法请求
+		if !ok {
+			log.Errorf("事件缺少url参数")
+			return errors.New("事件缺少url参数")
+		}
+		curSession := trust.InitTssSession(stc, event)
+		dataBytes, _ := network.GetMsg(url)
+		stc.TssStatus = true
+		// 主节点签名
+		trust.LeaderNodeSign(curSession, stc)
+		// 广播事件
+		stc.Event = event
+		network.BroadcastMsg("ReceiveEvent", []byte(data), c.oNode.Name, "")
+		stc.Msg = dataBytes
+		// 广播数据，开始对数据签名共识，主节点对签名聚合后发起事件消息
+		network.BroadcastMsg("ReceiveMsg", dataBytes, c.oNode.Name, event.EventID)
 		return nil
 	case "2": // 预言机从链上pull数据
 		curSession := trust.InitTssSession(stc, event)

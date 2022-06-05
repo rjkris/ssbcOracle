@@ -1,8 +1,8 @@
 #### ssbc预言机系统
 
-##### ssbc1和ssbc2跨链测试(多节点共识版本)
+##### ssbc1和ssbc2跨链
 1. 启动ssbc1和ssbc2两条链
-2. 在config.toml配置链信息(name,端口号)和预言机节点信息(默认三个节点)
+2. 在config.toml配置链信息(name,端口号)和预言机节点信息(默认四个节点)
 3. 本地6379端口开启redis server
 4. 执行go build编译
 5. 

@@ -50,6 +50,7 @@ type EventMessageParams struct {
 	EventKey string `json:"event_key"`
 	PublicKey string `json:"public_key"`
 	Args string `json:"args"`
+	Report    string `json:"report"`
 }
 
 // 表示唯一的api数据源
@@ -135,7 +136,10 @@ type UnderChainReport struct {
 }
 
 type OracleReputation struct {
-	LocalCreditArrays map[int]float64 // 预言机节点之间的局部信誉
-	GlobalCreditArrays []float64 // 预言机节点的全局信誉
-	Mutex sync.Mutex
+	LocalCreditArrays  map[int][]float64 // 预言机节点之间的局部信誉
+	GlobalOracleCredit []float64         // 预言机节点给出的全局信誉
+	GlobalUserCredit   []float64         // 用户节点给出的全局信誉
+	GlobalCredit       []float64         // 全局信誉
+	Total              int               // 预言机节点数量
+	Mutex              sync.Mutex
 }

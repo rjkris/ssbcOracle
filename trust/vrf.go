@@ -360,3 +360,20 @@ func geScalarMult(h *edwards25519.ExtendedGroupElement, a *[32]byte) *edwards255
 	}
 	return q
 }
+
+func VrfHashRatio(pk, sk []byte, msg []byte) (float64, error){
+	pi, vrfHash, err := Prove(pk, sk, msg[:])
+	if err != nil {
+		log.Errorf("VrfHash生成失败：%s", err)
+		return 0, err
+	}
+	ratio := HashRatio(vrfHash)
+	log.Infof("vrfHash ratio: %+v", ratio)
+
+	res, _ := Verify(pk, pi, msg[:])
+	if !res {
+		log.Errorf("VrfHash验证失败: %+v", err)
+		return 0, err
+	}
+	return ratio, nil
+}
