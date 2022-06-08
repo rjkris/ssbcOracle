@@ -14,7 +14,7 @@ import (
 var Report UnderChainReport
 var Reputation OracleReputation
 var AccountsTss map[string]ChainAccount
-
+var ContractAccounts map[string]map[string]ChainAccount // 预言机智能合约账户
 
 type TcpClient interface {
 	HandleRequest(conn net.Conn)
@@ -93,9 +93,29 @@ type ChainParams struct {
 }
 
 type ChainAccount struct {
+	ContractName string
 	AccountAddress string
 	PublicKey string
 	PrivateKey string
+}
+
+// 联盟链的账户数据结构
+type Account struct {
+	Address    string      `json:"address"`    // 账户地址
+	Balance    int         `json:"balance"`    // 账户余额
+	Data       AccountData `json:"data"`       // 智能合约数据
+	PublicKey  string      `json:"publickey"`  // 账户公钥
+	PrivateKey string      `json:"privatekey"` // 账户私钥（用户的私钥不应该出现在这里，后续删除）
+	IsContract bool        `json:"iscontract"` // 是否是智能合约账户
+	Seq        int         `json:"seq"`        // 该账户下定义的事件序列号
+}
+
+type AccountData struct {
+	Code         string `json:"code"`         // 合约代码
+	ContractName string `json:"contractname"` // 合约名称
+	Publisher    string `json:"publisher"`    // 部署合约的外部账户地址
+	Methods    []string `json:"methods"`	  // 合约的方法
+	Variables  []string `json:"variables"`	  // 合约的所有全局变量
 }
 
 type Query struct {

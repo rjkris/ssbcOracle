@@ -31,9 +31,9 @@ func (c *ChainClient)ListenEventHandler(stc *trust.SchnorrTssClient) {
 	}
 	time.Sleep(time.Duration(1)*time.Second) // sleep1秒确保密钥生成完成
 	for {
-		//if stc.TssStatus == true { // 正在进行数据共识，等待
-		//	continue
-		//}
+		if stc.TssStatus == true { // 正在进行数据共识，等待
+			continue
+		}
 		c.EventHandler(stc)
 	}
 }
@@ -214,7 +214,43 @@ func (c *ChainClient) Ready(msg network.TcpMessage, stc *trust.SchnorrTssClient)
 	}
 }
 
-func ChainRegister(name string)  {
+// 从联盟链获取预言机智能合约信息
+func GetContractAddress() {
+	if len(meta.ContractAccounts) == 0 {
+		meta.ContractAccounts = make(map[string]map[string]meta.ChainAccount)
+	}
+	for id, info := range util.ChainConfs {
+		params := meta.Query{
+			Type:       "getOracleAccount",
+			Parameters: nil,
+		}
+		paramsBytes, _ := json.Marshal(params)
+		resBytes, err := network.PostMsg("http://localhost:"+info.ClientPort+"/query", paramsBytes)
+		if err != nil {
+			log.Errorf("获取预言机账户信息失败:%s", err)
+			return
+		}
+		var res network.HttpResponse
+		_ = json.Unmarshal(resBytes, &res)
+		var accountsData map[string]meta.Account
+		dataBytes, _ := json.Marshal(res.Data)
+		err = json.Unmarshal(dataBytes, &accountsData)
+		if err != nil {
+			log.Errorf("预言机账户信息解析失败：%s", err)
+			return
+		}
+		cAccount := map[string]meta.ChainAccount{}
+		for name, data := range accountsData {
+			cAccount[name] = meta.ChainAccount{
+				ContractName:   name,
+				AccountAddress: data.Address,
+				PublicKey:      data.PublicKey,
+				PrivateKey:     data.PrivateKey,
+			}
+		}
+		meta.ContractAccounts[id] = cAccount
+	}
+	log.Infof("获取预言机账户信息成功：%+v", meta.ContractAccounts)
 	return
 }
 

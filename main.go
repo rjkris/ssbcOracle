@@ -69,6 +69,7 @@ func main() {
 		// n0作为主节点和监听节点
 		if oNode.Name == "n0" {
 			db.InitRedis("127.0.0.1:6379")
+			chain.GetContractAddress()
 			go c.ListenEventHandler(stc)
 		} else { // 共识节点就绪后通知主节点
 			time.Sleep(time.Duration(1)*time.Second) // 确保主节点启动完成
