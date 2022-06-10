@@ -12,14 +12,12 @@ import (
 	"ssbcOracle/network"
 	"ssbcOracle/trust"
 	"ssbcOracle/util"
+	"sync"
 	"time"
 )
 
 func main() {
-	meta.Report.LocalCreditArrays = make(map[int]float64)
-	meta.Report.SignTimeArrays = make(map[int]time.Duration)
-	meta.Report.SignIndexArrays = []int{1, 2}
-	meta.Report.LocalCreditArrays = map[int]float64{0:0.5, 1:0.5, 2:0.5}
+	meta.Reputation.Mutex = sync.Mutex{}
 	if len(os.Args) < 2 {
 		return
 	}
@@ -54,6 +52,8 @@ func main() {
 		// 初始化节点
 		oNode := util.NodeConfs[id]
 		trust.NewOracleNode(&oNode, kdb)
+		// 初始化预言机节点信誉值
+		trust.InitReputation()
 		// 初始化密钥
 		util.InitSecretKey(id, &oNode)
 		// 初始化account
@@ -69,6 +69,7 @@ func main() {
 		// n0作为主节点和监听节点
 		if oNode.Name == "n0" {
 			db.InitRedis("127.0.0.1:6379")
+			chain.GetContractAddress()
 			go c.ListenEventHandler(stc)
 		} else { // 共识节点就绪后通知主节点
 			time.Sleep(time.Duration(1)*time.Second) // 确保主节点启动完成

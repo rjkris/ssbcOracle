@@ -23,3 +23,15 @@ func TestToml(t *testing.T) {
 func TestMax(t *testing.T)  {
 	
 }
+
+func TestMap(t *testing.T)  {
+	n := 4
+	var credit []float64
+	for i := 0; i < n; i++ {
+		credit = append(credit, 0.5)
+	}
+	meta.Reputation.LocalCreditArrays = make(map[int][]float64)
+	meta.Reputation.LocalCreditArrays[0] = append([]float64(nil), credit...)
+	meta.Reputation.LocalCreditArrays[1] = append([]float64(nil), credit...)
+	fmt.Printf("%+v", meta.Reputation.LocalCreditArrays)
+}

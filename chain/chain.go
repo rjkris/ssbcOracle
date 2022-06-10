@@ -2,6 +2,7 @@ package chain
 
 import (
 	"encoding/json"
+	"errors"
 	"github.com/cloudflare/cfssl/log"
 	"ssbcOracle/db"
 	"ssbcOracle/meta"
@@ -9,7 +10,6 @@ import (
 	"ssbcOracle/trust"
 	"ssbcOracle/util"
 	"strings"
-	"sync"
 	"time"
 )
 
@@ -31,9 +31,9 @@ func (c *ChainClient)ListenEventHandler(stc *trust.SchnorrTssClient) {
 	}
 	time.Sleep(time.Duration(1)*time.Second) // sleep1秒确保密钥生成完成
 	for {
-		//if stc.TssStatus == true { // 正在进行数据共识，等待
-		//	continue
-		//}
+		if stc.TssStatus == true { // 正在进行数据共识，等待
+			continue
+		}
 		c.EventHandler(stc)
 	}
 }
@@ -60,32 +60,35 @@ func (c *ChainClient)EventHandler(stc *trust.SchnorrTssClient) error {
 	switch event.Type {
 	case "1": // 预言机从外部api获取数据
 		//method, ok := event.Args["method"]
-		//url, _ := event.Args["url"]
-		//var res []byte
-		//if ok {
-		//	switch method {
-		//	case "GET":
-		//		res, _ = network.GetMsg(url)
-		//	}
-		//}
-		//log.Info(string(res))
-		return nil
-	case "2": // 预言机从链上pull数据
-		// 主节点拉取数据
-		meta.Report.StartConsensusTime = time.Now()
-		dataBytes, _ := GetDataFromChain(event)
+		url, ok := event.Args["url"] // 默认通过get方法请求
+		if !ok {
+			log.Errorf("事件缺少url参数")
+			return errors.New("事件缺少url参数")
+		}
+		curSession := trust.InitTssSession(stc, event)
+		dataBytes, _ := network.GetMsg(url)
 		stc.TssStatus = true
+		// 主节点签名
+		trust.LeaderNodeSign(curSession, stc)
 		// 广播事件
 		stc.Event = event
 		network.BroadcastMsg("ReceiveEvent", []byte(data), c.oNode.Name, "")
 		stc.Msg = dataBytes
 		// 广播数据，开始对数据签名共识，主节点对签名聚合后发起事件消息
-		// 对于跨链数据共识，seq为事件ID
-		stc.SessionsMap.Store(event.EventID, &trust.TssSessionData{})
-		sValue, _ := stc.SessionsMap.Load(event.EventID)
-		curSession := sValue.(*trust.TssSessionData)
-		curSession.StartTime = time.Now()
-		curSession.Mutex = sync.Mutex{}
+		network.BroadcastMsg("ReceiveMsg", dataBytes, c.oNode.Name, event.EventID)
+		return nil
+	case "2": // 预言机从链上pull数据
+		curSession := trust.InitTssSession(stc, event)
+		// 主节点拉取数据
+		dataBytes, _ := GetDataFromChain(event, curSession)
+		stc.TssStatus = true
+		// 主节点签名
+		trust.LeaderNodeSign(curSession, stc)
+		// 广播事件
+		stc.Event = event
+		network.BroadcastMsg("ReceiveEvent", []byte(data), c.oNode.Name, "")
+		stc.Msg = dataBytes
+		// 广播数据，开始对数据签名共识，主节点对签名聚合后发起事件消息
 		network.BroadcastMsg("ReceiveMsg", dataBytes, c.oNode.Name, event.EventID)
 	case "3": // 预言机向链上push数据, 目前不进行共识
 		NewTransaction(event)
@@ -121,7 +124,7 @@ func AccountRegister(db *db.KvDb) ([]byte, error) {
 	return accountsBytes, nil
 }
 
-func GetDataFromChain(event meta.Event) ([]byte, error) {
+func GetDataFromChain(event meta.Event, session *trust.TssSessionData) ([]byte, error) {
 	t := time.Now()
 	chainName := event.Args["name"] // 目标链名
 	targetPort := util.ChainConfs[chainName].ClientPort
@@ -141,7 +144,7 @@ func GetDataFromChain(event meta.Event) ([]byte, error) {
 	log.Infof("跨链数据请求成功：%+v", res)
 	dataBytes, _ := json.Marshal(res.Data)
 	log.Infof("共识节点请求数据时间 ：%s", time.Since(t))
-	meta.Report.DataRequestTime = time.Since(t)
+	session.Report.DataRequestTime = time.Since(t)
 	return dataBytes, nil
 }
 
@@ -211,7 +214,43 @@ func (c *ChainClient) Ready(msg network.TcpMessage, stc *trust.SchnorrTssClient)
 	}
 }
 
-func ChainRegister(name string)  {
+// 从联盟链获取预言机智能合约信息
+func GetContractAddress() {
+	if len(meta.ContractAccounts) == 0 {
+		meta.ContractAccounts = make(map[string]map[string]meta.ChainAccount)
+	}
+	for id, info := range util.ChainConfs {
+		params := meta.Query{
+			Type:       "getOracleAccount",
+			Parameters: nil,
+		}
+		paramsBytes, _ := json.Marshal(params)
+		resBytes, err := network.PostMsg("http://localhost:"+info.ClientPort+"/query", paramsBytes)
+		if err != nil {
+			log.Errorf("获取预言机账户信息失败:%s", err)
+			return
+		}
+		var res network.HttpResponse
+		_ = json.Unmarshal(resBytes, &res)
+		var accountsData map[string]meta.Account
+		dataBytes, _ := json.Marshal(res.Data)
+		err = json.Unmarshal(dataBytes, &accountsData)
+		if err != nil {
+			log.Errorf("预言机账户信息解析失败：%s", err)
+			return
+		}
+		cAccount := map[string]meta.ChainAccount{}
+		for name, data := range accountsData {
+			cAccount[name] = meta.ChainAccount{
+				ContractName:   name,
+				AccountAddress: data.Address,
+				PublicKey:      data.PublicKey,
+				PrivateKey:     data.PrivateKey,
+			}
+		}
+		meta.ContractAccounts[id] = cAccount
+	}
+	log.Infof("获取预言机账户信息成功：%+v", meta.ContractAccounts)
 	return
 }
 

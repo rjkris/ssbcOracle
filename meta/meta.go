@@ -12,8 +12,9 @@ import (
 )
 
 var Report UnderChainReport
+var Reputation OracleReputation
 var AccountsTss map[string]ChainAccount
-
+var ContractAccounts map[string]map[string]ChainAccount // 预言机智能合约账户
 
 type TcpClient interface {
 	HandleRequest(conn net.Conn)
@@ -49,6 +50,7 @@ type EventMessageParams struct {
 	EventKey string `json:"event_key"`
 	PublicKey string `json:"public_key"`
 	Args string `json:"args"`
+	Report    string `json:"report"`
 }
 
 // 表示唯一的api数据源
@@ -91,9 +93,29 @@ type ChainParams struct {
 }
 
 type ChainAccount struct {
+	ContractName string
 	AccountAddress string
 	PublicKey string
 	PrivateKey string
+}
+
+// 联盟链的账户数据结构
+type Account struct {
+	Address    string      `json:"address"`    // 账户地址
+	Balance    int         `json:"balance"`    // 账户余额
+	Data       AccountData `json:"data"`       // 智能合约数据
+	PublicKey  string      `json:"publickey"`  // 账户公钥
+	PrivateKey string      `json:"privatekey"` // 账户私钥（用户的私钥不应该出现在这里，后续删除）
+	IsContract bool        `json:"iscontract"` // 是否是智能合约账户
+	Seq        int         `json:"seq"`        // 该账户下定义的事件序列号
+}
+
+type AccountData struct {
+	Code         string `json:"code"`         // 合约代码
+	ContractName string `json:"contractname"` // 合约名称
+	Publisher    string `json:"publisher"`    // 部署合约的外部账户地址
+	Methods    []string `json:"methods"`	  // 合约的方法
+	Variables  []string `json:"variables"`	  // 合约的所有全局变量
 }
 
 type Query struct {
@@ -122,10 +144,22 @@ type OracleNode struct {
 }
 
 type UnderChainReport struct {
-	StartConsensusTime time.Time
-	ConsensusCostTime time.Duration
-	DataRequestTime time.Duration
-	SignIndexArrays []int
-	SignTimeArrays map[int]time.Duration
-	LocalCreditArrays map[int]float64
+	StartConsensusTime time.Time // 开始共识时间
+	ConsensusCostTime time.Duration // 共识耗时
+	DataRequestTime time.Duration // 数据请求时间
+	SignNodeArrays []string // 门限签名结果
+	SignTimeArrays map[string]time.Duration // 签名时间
+	LeaderNode int // 主节点序号
+	EventVerifyResult map[int]bool // 事件验证结果
+	Data interface{} // 共识数据
+	ConsensusResult bool // 共识结果
+}
+
+type OracleReputation struct {
+	LocalCreditArrays  map[int][]float64 // 预言机节点之间的局部信誉
+	GlobalOracleCredit []float64         // 预言机节点给出的全局信誉
+	GlobalUserCredit   []float64         // 用户节点给出的全局信誉
+	GlobalCredit       []float64         // 全局信誉
+	Total              int               // 预言机节点数量
+	Mutex              sync.Mutex
 }
